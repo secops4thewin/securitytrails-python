@@ -4,9 +4,9 @@ Provides a python wrapper to the security trails api.
 ##### SecurityTrails
 **Usage**
 
- Parameter   | Details    | Required
----         |  ---       |    ---
-domain      | The domain that you are requesting    |   Required
+| Parameter | Details | Required |
+| --- | --- | --- |
+| domain | The domain that you are requesting | Required |
 **Example**
    ` s = SecurityTrails(api_key='yourapikey') `
    ` s.get_history_whois("netflix.com") `
@@ -17,7 +17,7 @@ Returns subdomains for a given domain.
 
 **Usage**
 
- Parameter   | Details    | Required
+ | Parameter | Details | Required |
 ---         |  ---       |    ---
 domain      | The domain that you are requesting    |   Required
 **Example**
