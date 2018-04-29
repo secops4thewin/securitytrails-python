@@ -7,7 +7,9 @@ Provides a python wrapper to the security trails api.
 | Parameter | Details | Required |
 | --- | --- | --- |
 | domain | The domain that you are requesting | Required |
+
 **Example**
+
    ` s = SecurityTrails(api_key='yourapikey') `
    ` s.get_history_whois("netflix.com") `
 
