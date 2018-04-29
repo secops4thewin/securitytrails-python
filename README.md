@@ -3,6 +3,7 @@ Provides a python wrapper to the security trails api.
 
 ##### SecurityTrails
 **Usage**
+
  Parameter   | Details    | Required
 ---         |  ---       |    ---
 domain      | The domain that you are requesting    |   Required
@@ -15,6 +16,7 @@ domain      | The domain that you are requesting    |   Required
 Returns subdomains for a given domain.
 
 **Usage**
+
  Parameter   | Details    | Required
 ---         |  ---       |    ---
 domain      | The domain that you are requesting    |   Required
