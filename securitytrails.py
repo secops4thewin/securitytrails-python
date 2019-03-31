@@ -1,500 +1,588 @@
-# Security Trails Python API
-import requests
-import logging
+#!/usr/bin/env python
+##
+# Security Trails API wrapper for Python 3.7
+# API documentation from https://docs.securitytrails.com/docs/overview
+# --
+# https://github.com./deadbits/securitytrails-python3
+##
 import json
+import logging
+import datetime
+import requests
+import validators
+
+from pygments import lexers
+from pygments import highlight
+from pygments import formatters
 
 # Establish Logging.
 logging.basicConfig()
 logger = logging.getLogger('securitytrails')
 
+jsondate = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
 
-class securitytrails():
-    def __init__(
-        self,
-        api_key,
-        base_url='https://api.securitytrails.com/v1/',
-        prettyPrint=False
-    ):
-        """
-        SecurityTrails Python Wrapper.  Implementation of production release from https://jsapi.apiary.io/apis/securitytrailsrestapi/introduction/authentication.html
 
-        Available Functions
-        - test_connect              Provides a method to test connectivity
-        - get_domain                Domain information endpoints that return various information about domains.
-        - get_subdomain             Returns subdomains for a given domain.
-        - get_tags                  Returns tags for a given domain.
-        - get_whois                 Returns the current WHOIS data about a given domain with the stats merged together.
-        - get_history_dns           Lists out specific historical information about the given domain parameter.
-        - get_history_whois         Returns the current WHOIS data about a given domain with the stats merged together.
-        - ip_explorer               Returns the neighbors in any given IP level range and essentially allows you to explore closeby IP addresses.
-        - domain_searcher           Filter and search specific records using this endpoint. Using simple filter composition, any type of data fetching is possible.
-                                    The post object uses a very simple dsl where the json key represents the type to filter on and the value.
-                                    Given this, you can create any number of queries, depending on the need.
-                                    It's worth noting that all of the filters are combined using AND fashion and work in combination.
-        - domain_searcher_stats     By appending /stats at the end of the search URL, instead of getting the usual records, a stats object is given in the response.
-                                    This object contains some usefull information like:tld count, hostname count, domain count
+class SecurityTrails:
+    """
+    Available Functions
+    - test_connect              Test connectivity
+    - get_domain                Get various information about domains
+    - get_subdomain             Get subdomains for a given domain
+    - get_tags                  Get tags for a given domain
+    - get_whois                 Get current WHOIS data for a given domain with the stats merged
+    - get_history_dns           Get specific historical DNS information for a given domain
+    - get_history_whois         Get specific historical WHOIS information for agiven domain.
+    - ip_explorer               Get the neighbors of a given IP address range
+    - domain_searcher           Filter and search specific records using this endpoint. Using simple filter composition, any type of data fetching is possible.
+                                The post object uses a very simple dsl where the json key represents the type to filter on and the value.
+                                Given this, you can create any number of queries, depending on the need.
+                                It's worth noting that all of the filters are combined using AND fashion and work in combination.
+    - domain_searcher_stats     By appending /stats at the end of the search URL, instead of getting the usual records, a stats object is given in the response.
+                                This object contains some usefull information like:tld count, hostname count, domain count
+    """
+    def __init__(self, api_key, pretty_print=False):
+        """ SecurityTrails API wrapper
+
+        @param api_key: securitytrails API key
+        @type api_key: string
+
+        @param pretty_print: specify if you want to return raw JSON or pretty print it
+        @type pretty_print: bool
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-
         s.function_name(valid_variables)
         """
-
-        # Create Requests Session
-        self.session = requests.session()
-        # Add API Key to Header
-        self.session.headers.update({'APIKEY': api_key})
-        # Create Base URL variable to allow for updates in the future
-        self.base_url = base_url
-        # Create API Key variable to pass into each request
+        print(api_key)
         self.api_key = api_key
-        # Create Pretty Print variable
-        self.prettyPrint = prettyPrint
+        if not isinstance(self.api_key, str) and self.api_key == '':
+            raise Exception('Invalid API key provided')
 
-        # Check to see if API Key is present
-        if self.api_key is None:
-            raise Exception("No API Key present")
+        self.base_url = 'https://api.securitytrails.com/v1/'
+        self.session = requests.Session()
+        self.session.headers.update({'Content-Type': 'application/json', 'APIKEY': self.api_key})
 
-        # Initiate Ping to Security Trails
-        self.ping = self.session.get(base_url + "ping")
+        self.pretty_print = pretty_print
 
-        # Request failed returning false and logging an error
-        if self.ping.status_code != 200:
-            logger.error(
-                "Error connecting to Security Trails, error message: {}".format(
-                    self.ping.text))
+        ping_test = self.test_connect()
+        if ping_test:
+            logger.debug('[main] successfully tested ping to API')
+        else:
+            logger.error('[main] error connecting to API')
+
 
     def parse_output(self, input):
-        # If prettyPrint set to False
-        if self.prettyPrint == False:
+        """ Parse JSON output from API response
+
+        @param input: API response data
+        @type dict
+
+        @return: API response data as JSON
+        @rtype: str
+        """
+        if self.pretty_print is False:
             return json.dumps(input)
-        # If prettyPrint set to True
-        elif self.prettyPrint == True:
-            print json.dumps(input, indent=4)
+
+        elif self.pretty_print:
+            print(
+                highlight(
+                    json.dumps(
+                        input,
+                        indent=4,
+                        default=jsondate
+                    ),
+                    lexers.JsonLexer(),
+                    formatters.TerminalFormatter()
+                )
+            )
+
 
     def test_connect(self):
-        """
-        Function:   Test ping to Security Trails API
+        """ Test ping to SecurityTrails API
 
-        No parameters: Relies on API key being set.  Returns True for successful connection and False for unsuccessful.
+        @return: True if successful connection or False for unsuccesful
+        @rtype: bool
 
         Usage:
         s = securitytrails(api_key='yourapikey')
         s.test_connect()
         """
+        try:
+            req = self.session.get(f'{self.base_url}/ping/')
+        except Exception as err:
+            raise Exception(f'Failed to ping API: {err}')
 
-        endpoint = '{}/ping/'.format(self.base_url)
-        # Make connection to the ping endpoint
-        r = self.session.get(endpoint)
-        # Specify Output as JSON
-        output = r.json()
-        # If the request is successful
-        if r.status_code == 200:
+        output = req.json()
+
+        if req.ok:
             return True
-        # Request failed returning false and logging an error
+
         else:
-            logger.warning(
-                "get_domain:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
+            logger.error(f'[test_connect] failed to ping API. error: {output["message"]}')
             return False
+
 
     def get_domain(self, domain):
-        """
-        Function:   Domain information endpoints that return various information about domains.
+        """Get information on specified domain name
 
-        :param domain: Required - The domain that you are requesting
+        @param domain: domain name
+        @type: str
+
+        @return: API response data as JSON
+        @rtype: str
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.get_domain("netflix.com")
+        s.get_domain('netflix.com')
         """
+        try:
+            req = self.session.get(f'{self.base_url}/domain/{domain}')
+        except Exception as err:
+            raise Exception(f'Failed to make GET request: {err}')
 
-        endpoint = '{}/domain/{}'.format(self.base_url, domain)
-        r = self.session.get(endpoint)
-        output = r.json()
-        # If the request is successful
-        if r.status_code == 200:
-            return self.parse_output(r.json())
-        # Request failed returning false and logging an error
+        output = req.json()
+
+        if req.ok:
+            return self.parse_output(req.json())
+
         else:
-            logger.warning(
-                "get_domain:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
+            logger.error(f'[get_domain] failed to query API. error: {output["message"]}')
             return False
+
 
     def get_subdomain(self, domain):
-        """
-        Function:   Returns subdomains for a given domain.
+        """Get subdomains for specified domain name
 
-        :param domain: Required - The domain that you are requesting
+        @param domain: domain name
+        @type: str
+
+        @return: API response data as JSON
+        @rtype: str
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.get_subdomain("netflix.com")
+        s.get_subdomain('netflix.com')
         """
+        try:
+            req = self.session.get(f'{self.base_url}/domain/{domain}/subdomains')
+        except Exception as err:
+            raise Exception(f'Failed to make GET request: {err}')
 
-        endpoint = '{}/domain/{}/subdomains'.format(self.base_url, domain)
-        # Make connection to the subdomain endpoint
-        r = self.session.get(endpoint)
-        output = r.json()
-        # If the request is successful
-        if r.status_code == 200:
-            return self.parse_output(r.json())
-        # Request failed returning false and logging an error
+        output = req.json()
+
+        if req.ok:
+            return self.parse_output(req.json())
+
         else:
-            logger.warning(
-                "get_subdomain:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
+            logger.error(f'[get_subdomain] failed to query API. error: {output["message"]}')
             return False
+
 
     def get_tags(self, domain):
-        """
-        Function:   Returns tags for a given domain.
+        """Get tags for specified domain name
 
-        :param domain: Required - The domain that you are requesting
+        @param domain: domain name
+        @type: str
+
+        @return: API response data as JSON
+        @rtype: str
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.get_tags("netflix.com")
+        s.get_tags('netflix.com')
         """
-        endpoint = '{}/domain/{}/tags'.format(self.base_url, domain)
-        # Make connection to the tags endpoint
-        r = self.session.get(endpoint)
-        output = r.json()
-        # If the request is successful
-        if r.status_code == 200:
-            return self.parse_output(r.json())
-        # Request failed returning false and logging an error
+        try:
+            req = self.session.get(f'{self.base_url}/domain/{domain}/tags')
+        except Exception as err:
+            raise Exception(f'Failed to make GET request: {err}')
+
+        output = req.json()
+
+        if req.ok:
+            return self.parse_output(req.json())
+
         else:
-            logger.warning(
-                "get_tags:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
+            logger.error(f'[get_tag] failed to query API. error: {output["message"]}')
             return False
+
 
     def get_whois(self, domain):
-        """
-        Function:   Returns the current WHOIS data about a given domain with the stats merged together.
+        """Get current WHOIS data on specified domain with the stats merged
 
-        :param domain: Required - The domain that you are requesting
+        @param domain: domain name
+        @type: str
+
+        @return: API response data as JSON
+        @rtype: str
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.get_whois("netflix.com")
+        s.get_whois('netflix.com')
         """
-        endpoint = '{}/domain/{}/whois'.format(self.base_url, domain)
-        # Make connection to the whois endpoint
-        r = self.session.get(endpoint)
-        output = r.json()
-        # If the request is successful
-        if r.status_code == 200:
-            return self.parse_output(r.json())
-        # Request failed returning false and logging an error
-        else:
-            logger.warning(
-                "get_whois:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
-            return False
+        try:
+            req = self.session.get(f'{self.base_url}/domain/{domain}/whois')
+        except Exception as err:
+            raise Exception(f'Failed to make GET request: {err}')
+
+        output = req.json()
+
+        if req.ok:
+            return self.parse_output(req.json())
+
+        logger.error(f'[get_whois] failed to query API. error: {output["message"]}')
+        return False
+
 
     def get_history_dns(self, domain, record_type):
-        """
-        Function:   Lists out specific historical information about the given domain parameter.
+        """ Get specific historical WHOIS information for agiven domain
 
-        :param domain: Required - The domain that you are requesting
-        :param record_type: Required - Valid types a, aaaa, mx, ns, txt, soa
+        @param domain: Required - The domain that you are requesting
+        @type: str
+
+        @param record_type: DNS record type (accepted: A, AAAA, MX, NX, TXT, SOA)
+        @type: str
+
+        @return: API response data as JSON
+        @rtype: str
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.get_history_dns("netflix.com", "a",)
+        s.get_history_dns('netflix.com', 'a',)
 
         s = securitytrails(api_key='yourapikey')
-        s.get_history_dns("netflix.com", "mx")
+        s.get_history_dns('netflix.com', 'mx')
         """
-
-        # Convert the record_type to lower case
         record_type = record_type.lower()
-
-        # Validate record_type type variable
         type_check = ['a', 'aaaa', 'mx', 'ns', 'txt', 'soa']
 
         if record_type in type_check:
-            # Returns the history dns data about a given domain with the stats
-            # merged together.
-            endpoint = '{}/history/{}/dns/{}'.format(
-                self.base_url, domain, record_type)
-            # Make connection to the history dns endpoint
-            r = self.session.get(endpoint)
-            # If the request is successful
-            if r.status_code == 200:
-                # Output results to json
-                return self.parse_output(r.json())
-            else:
-                # Request failed returning false and logging an error
-                # Output results to json
-                output = r.json()
-                logger.warning(
-                    "get_history_dns:Error with query to Security Trails, error message: {}".format(
-                        output['message']))
-                return False
+            try:
+                req = self.session.get(f'{self.base_url}/history/{domain}/dns/{record_type}')
+            except Exception as err:
+                raise Exception(f'[get_history_dns] failed to make GET request: {err}')
 
-        # Request failed returning false and logging an error
-        else:
-            logger.warning("get_history_dns: Invalid type, valid types are {}.".format(
-                str(", ".join(type_check))))
+            if req.ok:
+                return self.parse_output(req.json())
+
+            logger.error(f'[get_history_dns] failed to query API. error: {req.json()["message"]}')
             return False
+
+        else:
+            logger.error(f'[get_history_dns] invalid DNS record type. accepted {str(", ".join(type_check))}')
+            return False
+
 
     def get_history_whois(self, domain):
-        """
-        Function:   Returns the current WHOIS data about a given domain with the stats merged together.
+        """Get current WHOIS data for given domain with stats merged
 
-        :param domain: Required - The domain that you are requesting
+        @param domain: domain name
+        @type str
+
+        @return: API response data as JSON
+        @rtype: str
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.get_history_whois("netflix.com")
-
+        s.get_history_whois('netflix.com')
         """
-        endpoint = '{}/history/{}/whois'.format(self.base_url, domain)
-        r = self.session.get(endpoint)
-        # If the request is successful
-        if r.status_code == 200:
-            # Output results to json
-            return self.parse_output(r.json())
-        # Request failed returning false and logging an error
+        try:
+            req = self.session.get(f'{self.base_url}/history/{domain}/whois')
+        except Exception as err:
+            raise Exception(f'[get_history_whois] failed to make GET request: {err}')
+
+        if req.ok:
+            return self.parse_output(req.json())
+
         else:
-            # Output results to json
-            output = r.json()
-            logger.warning(
-                "get_history_whois:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
+            logger.error(f'[get_history_whois] failed to query API. error: {req.json()["message"]}')
             return False
+
 
     def ip_explorer(self, ip, mask=32):
-        """
-        Function:   Returns the neighbors in any given IP level range and essentially allows you to explore closeby IP addresses.
+        """ Get the IP neighbors of a given domain by IP address range
 
-        :param ip: Required - The domain that you are requesting
-        :param mask Required - Defaults to 32 bit mask
+        @param ip: IP address
+        @type: str
+
+        @param mask: IP bit mask
+        @type int
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.ip_explorer("netflix.com")
+        s.ip_explorer('netflix.com', mask=32)
 
         """
-        endpoint = '{}/explore/ip/{}'.format(self.base_url, ip)
-        r = self.session.get(endpoint)
-        # If the request is successful
-        if r.status_code == 200:
-            # Output results to json
-            return self.parse_output(r.json())
-        # Request failed returning false and logging an error
+        try:
+            req = self.session.get(f'{self.base_url}/explore/ip/{ip}')
+        except Exception as err:
+            raise Exception(f'[ip_explorer] failed to make GET request: {err}')
+
+        if req.ok:
+            return self.parse_output(req.json())
+
         else:
-            # Output results to json
-            output = r.json()
-            logger.warning(
-                "ip_explorer:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
+            logger.error(f'[ip_explorer] failed to query API. error message: {req.json()["message"]}')
             return False
+
 
     def domain_searcher(self, **kwargs):
-        """
-        Function:       Filter and search specific records using this endpoint. Using simple filter composition, any type of data fetching is possible.
-                        The post object uses a very simple dsl where the json key represents the type to filter on and the value.
-                        Given this, you can create any number of queries, depending on the need.
-                        It's worth noting that all of the filters are combined using AND fashion and work in combination.
+        """ Get specific records of domains using keyword filters
 
-        :param
-                        ipv4                IPv4 Address
-                        ipv6                IPv6 Address
-                        mx                  MX Address
-                        ns                  DNS Name Server
-                        cname               DNS CNAME
-                        subdomain           Subdomain of host
-                        apex_domain         In dev.securitytrails.securitytails.com would be securitytails.com
-                        soa_email           Start of Authority Email Address
-                        tld                 Top Level Domain
-                        whois_email         Registered Whois Email
-                        whois_street1       Registered Whois Street 1
-                        whois_street2       Registered Whois Street 2
-                        whois_street3       Registered Whois Street 3
-                        whois_street4       Registered Whois Street 4
-                        whois_telephone     Registered Whois Telephone
-                        whois_postalCode    Registered Whois Postal Code
-                        whois_organization  Registered Whois Organization
-                        whois_name          Registered Whois Name
-                        whois_fax           Registered Whois Fax
-                        whois_city          Registered Whois City
-                        keyword             Keyword Filter
+        @note: Filter and search specific records using this endpoint.
+        @note: It is possible to fetch any type  of data using simple filter composition.
+        @note: The post object uses a very simple DSL where the JSON key represents the type to filter on and the value.
+        @note: All of the filters can be combined using 'AND' to work in combination, allowing you to create any number of queries.
+
+        @param ipv4:    ipv4 address
+        @type: str
+
+        @param ipv6:    ipv6 address
+        @type: str
+
+        @param mx:      MX address
+        @type: str
+
+        @param ns:      DNS name server
+        @type: str
+
+        @param cname:   DNS CNAME
+        @type: str
+
+        @param apex_domain: root domain of host
+        @type: str
+
+        @param subdomain: subdomain of host
+        @type: str
+
+        @param soa_email: SOA email address
+        @type: str
+
+        @param tld:     top level domain
+        @type: str
+
+        @param whois_email: WHOIS email address
+        @type: str
+
+        @param whois_street1: WHOIS street line 1
+        @type: str
+
+        @param whois_street2: WHOIS street line 2
+        @type: str
+
+        @param whois_street3: WHOIS street line 3
+        @type: str
+
+        @param whois_street4: WHOIS street line 5
+        @type: str
+
+        @param whois_telephone: WHOIS telephone number
+        @type: str
+
+        @param whois_postalCode: WHOIS postal code
+        @type: str
+
+        @param whois_organization: WHOIS organization
+        @type: str
+
+        @param whois_name: WHOIS name
+        @type: str
+
+        @param whois_fax: WHOIS fax number
+        @type: str
+
+        @param whois_city: WHOIS city
+        @type: str
+
+        @param keyword: keyword filter
+        @type: str
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.domain_searcher(mx="alt4.aspmx.l.google.com",keyword: "stackover")
+        s.domain_searcher(mx='alt4.aspmx.l.google.com',keyword: 'stackover')
 
         s = securitytrails(api_key='yourapikey')
-        s.domain_searcher(mx="alt4.aspmx.l.google.com",keyword: "stackover")
-
+        s.domain_searcher(mx='alt4.aspmx.l.google.com',keyword: 'stackover')
         """
-        endpoint = '{}/search/list'.format(self.base_url)
-        self.session.headers.update(
-            {'Content-Type': 'application/json', 'APIKEY': self.api_key})
-
         # Establish empty filter dictionary object with a filter list.
         values = {}
         values['filter'] = {}
 
         # Array of valid keywords
         valid_filter = [
-            "ipv4",
-            "ipv6",
-            "mx",
-            "ns",
-            "cname",
-            "subdomain",
-            "apex_domain",
-            "soa_email",
-            "tld",
-            "whois_email",
-            "whois_street1",
-            "whois_street2",
-            "whois_street3",
-            "whois_street4",
-            "whois_telephone",
-            "whois_postalCode",
-            "whois_organization",
-            "whois_name",
-            "whois_fax",
-            "whois_city",
-            "keyword"]
+            'ipv4',
+            'ipv6',
+            'mx',
+            'ns',
+            'cname',
+            'subdomain',
+            'apex_domain',
+            'soa_email',
+            'tld',
+            'whois_email',
+            'whois_street1',
+            'whois_street2',
+            'whois_street3',
+            'whois_street4',
+            'whois_telephone',
+            'whois_postalCode',
+            'whois_organization',
+            'whois_name',
+            'whois_fax',
+            'whois_city',
+            'keyword']
 
         for key, value in kwargs.iteritems():
             if key not in valid_filter:
-                logger.warning(
-                    "domain_searcher:Error with query to Security Trails.  {} is not a valid filter. Ignoring this key.  Valid formats are: {}".format(
-                        str(key), str(
-                            ", ".join(valid_filter))))
-
+                logger.warning(f'domain_searcher: {str(key)} is not a valid filter; ignoring this key')
+                logger.warning(f'domain_searcher: valied formats are: {str(", ".join(valid_filter))}')
             else:
                 values['filter'][key] = value
 
         if values['filter']:
-            r = self.session.post(endpoint, data=json.dumps(values))
-        # Request failed returning false and logging an error
+            try:
+                req = self.session.post(f'{self.base_url}/search/list', data=json.dumps(values))
+            except Exception as err:
+                raise Exception(f'Failed to make GET request: {err}')
+
         else:
-            logger.warning(
-                "domain_searcher:Error with query to Security Trails. No valid keys added to search.")
+            logger.error('domain_searcher: failed to query API. error: no valid keys in search')
             return False
 
         # If the request is successful
-        if r.status_code == 200:
-            # Output results to json
-            return self.parse_output(r.json())
-        # Request failed returning false and logging an error
+        if req.ok:
+            return self.parse_output(req.json())
+
         else:
-            # Output results to json
-            output = r.json()
-            logger.warning(
-                "domain_searcher:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
+            logger.error(f'domain_searcher: failed to query API. error: {req.json()["message"]}')
             return False
+
 
     def domain_searcher_stats(self, **kwargs):
-        """
-        Function:       By appending /stats at the end of the search URL, instead of getting the usual records, a stats object is given in the response.
-                        This object contains some usefull information like:tld count, hostname count, domain count
+        """Get statistics of a host containing data such as tld, hostname, and domain count
 
-        :param
-                        ipv4                IPv4 Address
-                        ipv6                IPv6 Address
-                        mx                  MX Address
-                        ns                  DNS Name Server
-                        cname               DNS CNAME
-                        subdomain           Subdomain of host
-                        apex_domain         In dev.securitytrails.securitytails.com would be securitytails.com
-                        soa_email           Start of Authority Email Address
-                        tld                 Top Level Domain
-                        whois_email         Registered Whois Email
-                        whois_street1       Registered Whois Street 1
-                        whois_street2       Registered Whois Street 2
-                        whois_street3       Registered Whois Street 3
-                        whois_street4       Registered Whois Street 4
-                        whois_telephone     Registered Whois Telephone
-                        whois_postalCode    Registered Whois Postal Code
-                        whois_organization  Registered Whois Organization
-                        whois_name          Registered Whois Name
-                        whois_fax           Registered Whois Fax
-                        whois_city          Registered Whois City
-                        keyword             Keyword Filter
+        @param ipv4:    ipv4 address
+        @type: str
+
+        @param ipv6:    ipv6 address
+        @type: str
+
+        @param mx:      MX address
+        @type: str
+
+        @param ns:      DNS name server
+        @type: str
+
+        @param cname:   DNS CNAME
+        @type: str
+
+        @param apex_domain: root domain of host
+        @type: str
+
+        @param subdomain: subdomain of host
+        @type: str
+
+        @param soa_email: SOA email address
+        @type: str
+
+        @param tld:     top level domain
+        @type: str
+
+        @param whois_email: WHOIS email address
+        @type: str
+
+        @param whois_street1: WHOIS street line 1
+        @type: str
+
+        @param whois_street2: WHOIS street line 2
+        @type: str
+
+        @param whois_street3: WHOIS street line 3
+        @type: str
+
+        @param whois_street4: WHOIS street line 5
+        @type: str
+
+        @param whois_telephone: WHOIS telephone number
+        @type: str
+
+        @param whois_postalCode: WHOIS postal code
+        @type: str
+
+        @param whois_organization: WHOIS organization
+        @type: str
+
+        @param whois_name: WHOIS name
+        @type: str
+
+        @param whois_fax: WHOIS fax number
+        @type: str
+
+        @param whois_city: WHOIS city
+        @type: str
+
+        @param keyword: keyword filter
+        @type: str
 
         Usage:
         s = securitytrails(api_key='yourapikey')
-        s.domain_searcher(mx="alt4.aspmx.l.google.com",keywords="stackover"))
+        s.domain_searcher(mx='alt4.aspmx.l.google.com',keywords='stackover'))
 
         s = securitytrails(api_key='yourapikey')
-        s.domain_searcher(whois_postalCode=94016,keyword="services")
+        s.domain_searcher(whois_postalCode=94016,keyword='services')
 
         """
-        # By appending /stats at the end of the search URL, instead of getting
-        # the usual records, a stats object is given in the response. This
-        # object contains some usefull information like:tld count, hostname
-        # count, domain count
-        endpoint = '{}/search/list/stats'.format(self.base_url)
-        self.session.headers.update(
-            {'Content-Type': 'application/json', 'APIKEY': self.api_key})
-
         # Establish empty filter dictionary object with a filter list.
         values = {}
         values['filter'] = {}
 
         # Array of valid keywords
         valid_filter = [
-            "ipv4",
-            "ipv6",
-            "mx",
-            "ns",
-            "cname",
-            "subdomain",
-            "apex_domain",
-            "soa_email",
-            "tld",
-            "whois_email",
-            "whois_street1",
-            "whois_street2",
-            "whois_street3",
-            "whois_street4",
-            "whois_telephone",
-            "whois_postalCode",
-            "whois_organization",
-            "whois_name",
-            "whois_fax",
-            "whois_city",
-            "keyword"]
+            'ipv4',
+            'ipv6',
+            'mx',
+            'ns',
+            'cname',
+            'subdomain',
+            'apex_domain',
+            'soa_email',
+            'tld',
+            'whois_email',
+            'whois_street1',
+            'whois_street2',
+            'whois_street3',
+            'whois_street4',
+            'whois_telephone',
+            'whois_postalCode',
+            'whois_organization',
+            'whois_name',
+            'whois_fax',
+            'whois_city',
+            'keyword']
 
         for key, value in kwargs.iteritems():
             if key not in valid_filter:
-                logger.warning(
-                    "domain_searcher_stats:Error with query to Security Trails.  {} is not a valid filter. Ignoring this key.  Valid formats are: {}".format(
-                        str(key), str(
-                            ", ".join(valid_filter))))
+                logger.warning(f'domain_searcher: {str(key)} is not a valid filter; ignoring this key')
+                logger.warning(f'domain_searcher: valied formats are: {str(", ".join(valid_filter))}')
 
             else:
                 values['filter'][key] = value
 
         if values['filter']:
-            r = self.session.post(endpoint, data=json.dumps(values))
+            try:
+                req = self.session.post(
+                    f'{self.base_url}/search/list/stats'.format(self.base_url),
+                    data=json.dumps(values)
+                )
+            except Exception as err:
+                raise Exception(f'Failed to make GET request: {err}')
 
         else:
-            logger.warning(
-                "domain_searcher_stats:Error with query to Security Trails. No valid keys added to search.")
+            logger.error('domain_searcher_stats: failed to query API. error: no valid filters provided')
             return False
 
-        # If the request is successful
-        if r.status_code == 200:
-            # Output results to json
-            return self.parse_output(r.json())
-        # Request failed returning false and logging an error
+        if req.ok:
+            return self.parse_output(req.json())
+
         else:
-            # Output results to json
-            output = r.json()
-            logger.warning(
-                "domain_searcher_stats:Error with query to Security Trails, error message: {}".format(
-                    output['message']))
+            logger.error(f'domain_searcher_stats: failed to query API. error: {req.json()["message"]}')
             return False
