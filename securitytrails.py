@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 ##
 # Security Trails API wrapper for Python 3.7
 # API documentation from https://docs.securitytrails.com/docs/overview
@@ -19,6 +19,8 @@ from pygments import formatters
 logging.basicConfig()
 logger = logging.getLogger('securitytrails')
 
+# make dates nice for JSON
+# @todo: make this into a class instead of lambda
 jsondate = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
 
 
@@ -53,14 +55,18 @@ class SecurityTrails:
         s = securitytrails(api_key='yourapikey')
         s.function_name(valid_variables)
         """
-        print(api_key)
         self.api_key = api_key
         if not isinstance(self.api_key, str) and self.api_key == '':
             raise Exception('Invalid API key provided')
 
         self.base_url = 'https://api.securitytrails.com/v1/'
-        self.session = requests.Session()
-        self.session.headers.update({'Content-Type': 'application/json', 'APIKEY': self.api_key})
+
+        # if users try to set their own base API URL, lets make sure they are actual URLs
+        if not validators.url(self.base_url):
+            raise ValueError(f'[main] self.base_url of {self.base_url} is not a valid URL')
+
+        self._session = requests.Session()
+        self._session.headers.update({'Content-Type': 'application/json', 'APIKEY': self.api_key})
 
         self.pretty_print = pretty_print
 
@@ -70,8 +76,7 @@ class SecurityTrails:
         else:
             logger.error('[main] error connecting to API')
 
-
-    def parse_output(self, input):
+    def _parse_output(self, input):
         """ Parse JSON output from API response
 
         @param input: API response data
@@ -96,7 +101,6 @@ class SecurityTrails:
                 )
             )
 
-
     def test_connect(self):
         """ Test ping to SecurityTrails API
 
@@ -108,7 +112,7 @@ class SecurityTrails:
         s.test_connect()
         """
         try:
-            req = self.session.get(f'{self.base_url}/ping/')
+            req = self._session.get(f'{self.base_url}/ping/')
         except Exception as err:
             raise Exception(f'Failed to ping API: {err}')
 
@@ -120,7 +124,6 @@ class SecurityTrails:
         else:
             logger.error(f'[test_connect] failed to ping API. error: {output["message"]}')
             return False
-
 
     def get_domain(self, domain):
         """Get information on specified domain name
@@ -136,19 +139,18 @@ class SecurityTrails:
         s.get_domain('netflix.com')
         """
         try:
-            req = self.session.get(f'{self.base_url}/domain/{domain}')
+            req = self._session.get(f'{self.base_url}/domain/{domain}')
         except Exception as err:
             raise Exception(f'Failed to make GET request: {err}')
 
         output = req.json()
 
         if req.ok:
-            return self.parse_output(req.json())
+            return self._parse_output(req.json())
 
         else:
             logger.error(f'[get_domain] failed to query API. error: {output["message"]}')
             return False
-
 
     def get_subdomain(self, domain):
         """Get subdomains for specified domain name
@@ -164,19 +166,18 @@ class SecurityTrails:
         s.get_subdomain('netflix.com')
         """
         try:
-            req = self.session.get(f'{self.base_url}/domain/{domain}/subdomains')
+            req = self._session.get(f'{self.base_url}/domain/{domain}/subdomains')
         except Exception as err:
             raise Exception(f'Failed to make GET request: {err}')
 
         output = req.json()
 
         if req.ok:
-            return self.parse_output(req.json())
+            return self._parse_output(req.json())
 
         else:
             logger.error(f'[get_subdomain] failed to query API. error: {output["message"]}')
             return False
-
 
     def get_tags(self, domain):
         """Get tags for specified domain name
@@ -192,19 +193,18 @@ class SecurityTrails:
         s.get_tags('netflix.com')
         """
         try:
-            req = self.session.get(f'{self.base_url}/domain/{domain}/tags')
+            req = self._session.get(f'{self.base_url}/domain/{domain}/tags')
         except Exception as err:
             raise Exception(f'Failed to make GET request: {err}')
 
         output = req.json()
 
         if req.ok:
-            return self.parse_output(req.json())
+            return self._parse_output(req.json())
 
         else:
             logger.error(f'[get_tag] failed to query API. error: {output["message"]}')
             return False
-
 
     def get_whois(self, domain):
         """Get current WHOIS data on specified domain with the stats merged
@@ -220,18 +220,17 @@ class SecurityTrails:
         s.get_whois('netflix.com')
         """
         try:
-            req = self.session.get(f'{self.base_url}/domain/{domain}/whois')
+            req = self._session.get(f'{self.base_url}/domain/{domain}/whois')
         except Exception as err:
             raise Exception(f'Failed to make GET request: {err}')
 
         output = req.json()
 
         if req.ok:
-            return self.parse_output(req.json())
+            return self._parse_output(req.json())
 
         logger.error(f'[get_whois] failed to query API. error: {output["message"]}')
         return False
-
 
     def get_history_dns(self, domain, record_type):
         """ Get specific historical WHOIS information for agiven domain
@@ -257,12 +256,12 @@ class SecurityTrails:
 
         if record_type in type_check:
             try:
-                req = self.session.get(f'{self.base_url}/history/{domain}/dns/{record_type}')
+                req = self._session.get(f'{self.base_url}/history/{domain}/dns/{record_type}')
             except Exception as err:
                 raise Exception(f'[get_history_dns] failed to make GET request: {err}')
 
             if req.ok:
-                return self.parse_output(req.json())
+                return self._parse_output(req.json())
 
             logger.error(f'[get_history_dns] failed to query API. error: {req.json()["message"]}')
             return False
@@ -270,7 +269,6 @@ class SecurityTrails:
         else:
             logger.error(f'[get_history_dns] invalid DNS record type. accepted {str(", ".join(type_check))}')
             return False
-
 
     def get_history_whois(self, domain):
         """Get current WHOIS data for given domain with stats merged
@@ -286,17 +284,16 @@ class SecurityTrails:
         s.get_history_whois('netflix.com')
         """
         try:
-            req = self.session.get(f'{self.base_url}/history/{domain}/whois')
+            req = self._session.get(f'{self.base_url}/history/{domain}/whois')
         except Exception as err:
             raise Exception(f'[get_history_whois] failed to make GET request: {err}')
 
         if req.ok:
-            return self.parse_output(req.json())
+            return self._parse_output(req.json())
 
         else:
             logger.error(f'[get_history_whois] failed to query API. error: {req.json()["message"]}')
             return False
-
 
     def ip_explorer(self, ip, mask=32):
         """ Get the IP neighbors of a given domain by IP address range
@@ -313,17 +310,16 @@ class SecurityTrails:
 
         """
         try:
-            req = self.session.get(f'{self.base_url}/explore/ip/{ip}')
+            req = self._session.get(f'{self.base_url}/explore/ip/{ip}')
         except Exception as err:
             raise Exception(f'[ip_explorer] failed to make GET request: {err}')
 
         if req.ok:
-            return self.parse_output(req.json())
+            return self._parse_output(req.json())
 
         else:
             logger.error(f'[ip_explorer] failed to query API. error message: {req.json()["message"]}')
             return False
-
 
     def domain_searcher(self, **kwargs):
         """ Get specific records of domains using keyword filters
@@ -433,29 +429,31 @@ class SecurityTrails:
 
         for key, value in kwargs.iteritems():
             if key not in valid_filter:
-                logger.warning(f'domain_searcher: {str(key)} is not a valid filter; ignoring this key')
-                logger.warning(f'domain_searcher: valied formats are: {str(", ".join(valid_filter))}')
+                logger.warning(f'[domain_searcher] {str(key)} is not a valid filter; ignoring this key')
+                logger.warning(f'[domain_searcher] valied formats are: {str(", ".join(valid_filter))}')
             else:
                 values['filter'][key] = value
 
         if values['filter']:
             try:
-                req = self.session.post(f'{self.base_url}/search/list', data=json.dumps(values))
+                req = self._session.post(
+                    f'{self.base_url}/search/list',
+                    data=json.dumps(values)
+                )
             except Exception as err:
                 raise Exception(f'Failed to make GET request: {err}')
 
         else:
-            logger.error('domain_searcher: failed to query API. error: no valid keys in search')
+            logger.error('[domain_searcher] failed to query API. error: no valid keys in search')
             return False
 
         # If the request is successful
         if req.ok:
-            return self.parse_output(req.json())
+            return self._parse_output(req.json())
 
         else:
-            logger.error(f'domain_searcher: failed to query API. error: {req.json()["message"]}')
+            logger.error(f'[domain_searcher] failed to query API. error: {req.json()["message"]}')
             return False
-
 
     def domain_searcher_stats(self, **kwargs):
         """Get statistics of a host containing data such as tld, hostname, and domain count
@@ -561,28 +559,28 @@ class SecurityTrails:
 
         for key, value in kwargs.iteritems():
             if key not in valid_filter:
-                logger.warning(f'domain_searcher: {str(key)} is not a valid filter; ignoring this key')
-                logger.warning(f'domain_searcher: valied formats are: {str(", ".join(valid_filter))}')
+                logger.warning(f'[domain_searcher_stats] {str(key)} is not a valid filter; ignoring this key')
+                logger.warning(f'valid formats are: {str(", ".join(valid_filter))}')
 
             else:
                 values['filter'][key] = value
 
         if values['filter']:
             try:
-                req = self.session.post(
-                    f'{self.base_url}/search/list/stats'.format(self.base_url),
+                req = self._session.post(
+                    f'{self.base_url}/search/list/stats',
                     data=json.dumps(values)
                 )
             except Exception as err:
-                raise Exception(f'Failed to make GET request: {err}')
+                raise Exception(f'[domain_searcher_stats] Failed to make GET request: {err}')
 
         else:
-            logger.error('domain_searcher_stats: failed to query API. error: no valid filters provided')
+            logger.error('[domain_searcher_stats] failed to query API. error: no valid filters provided')
             return False
 
         if req.ok:
-            return self.parse_output(req.json())
+            return self._parse_output(req.json())
 
         else:
-            logger.error(f'domain_searcher_stats: failed to query API. error: {req.json()["message"]}')
+            logger.error(f'[domain_searcher_stats] failed to query API. error: {req.json()["message"]}')
             return False
